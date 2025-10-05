@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CSP Screener + Calculator — v2.2.7</title>
+  <style>
+    /* Keep layout consistent whether a vertical scrollbar exists or not */
+    html { scrollbar-gutter: stable both-edges; }
+    body { overflow-y: scroll; }
+
+    :root { --bg:#f5f5f7; --surface:#fff; --text:#1d1d1f; --muted:#6e6e73; --line:#e5e5ea; --accent:#007aff; --shadow:0 10px 30px rgba(0,0,0,.08); --radius-xl:22px; --radius:14px; }
+    body.dark { --bg:#1c1c1e; --surface:#2c2c2e; --text:#f5f5f7; --muted:#a1a1a6; --line:#3a3a3c; --accent:#0a84ff; --shadow:0 20px 60px rgba(0,0,0,.6); }
+    *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Inter,system-ui,sans-serif;background:var(--bg);color:var(--text)}
+    header{position:sticky;top:0;z-index:10;backdrop-filter:saturate(180%) blur(12px);background:color-mix(in oklab,var(--bg) 80%,transparent);padding:16px;border-bottom:1px solid var(--line)}
+    .topbar{max-width:1300px;margin:0 auto;display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center}
+    .title{text-align:center;font-weight:800;letter-spacing:.2px}
+    .cluster{display:inline-flex;gap:8px;align-items:center}
+    .btn{border:0;padding:10px 14px;border-radius:12px;font-weight:700;cursor:pointer;background:var(--accent);color:#fff;box-shadow:var(--shadow)}
+    .btn.secondary{background:var(--surface);color:var(--text);border:1px solid var(--line);box-shadow:none}
+    .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)} .btn:disabled{opacity:.6;cursor:default}
+    .chip{padding:6px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line);font-weight:600}
+    .app{max-width:1300px;margin:14px auto;display:grid;grid-template-columns:190px 1fr;gap:24px;padding:0 8px 28px}
+    .side{display:grid;gap:12px;align-content:start;margin-left:-10px}
+    .card{background:var(--surface);border:1.5px solid var(--line);border-radius:var(--radius-xl);box-shadow:var(--shadow);padding:20px}
+    .tabs{display:grid;gap:8px}
+    .tab{width:100%;text-align:left;padding:14px 16px;border-radius:14px;background:var(--surface);border:1px solid var(--line);font-weight:800;cursor:pointer;color:var(--text);font-size:15px}
+    .tab.active{background:color-mix(in oklab,var(--accent) 10%,var(--surface));border-color:color-mix(in oklab,var(--accent) 30%,var(--line));color:var(--accent)}
+    input,select{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:15px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .kv{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:8px}
+    .kv div{display:flex;justify-content:space-between;gap:8px}
+    .k{color:var(--muted);font-weight:700;font-size:14px}
+    .muted{color:var(--muted);font-weight:600}
+    .badge{padding:4px 8px;border-radius:999px;border:1px solid var(--line)}
+    .ok{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.4)} .warn{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.4)} .bad{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.4)}
+    canvas.mini{width:100%;height:120px;border-radius:12px;background:color-mix(in oklab,var(--surface) 70%,transparent);border:1px dashed var(--line)}
+    .footer{text-align:center;color:var(--muted);padding:24px;font-size:12px}
+
+    /* Help modal */
+    .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:50}
+    .modal.on{display:flex}
+    .modal .panel{max-width:860px;width:calc(100% - 24px);background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:18px}
+    .modal h3{margin:8px 0 12px}
+    .modal .steps{display:grid;gap:10px}
+    .modal .step{border:1px solid var(--line);border-radius:14px;padding:12px}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div class="cluster">
+        <button id="toggleDark" class="btn secondary">🌙</button>
+        <button id="btnImport" class="btn ghost">Import JSON</button>
+        <button id="btnExport" class="btn ghost">Export JSON</button>
+        <button id="btnHelp" class="btn secondary">Help</button>
+        <input id="fileInput" type="file" accept=".json" hidden />
+      </div>
+      <div class="title">CSP Screener + Calculator</div>
+      <div class="cluster" style="justify-self:end"><span id="saveBadge" class="chip">💾 Saved</span></div>
+    </div>
+  </header>
+
+  <main class="app">
+    <aside class="side"><div class="card"><div class="tabs">
+      <button class="tab active" data-tab="screener">Screener</button>
+      <button class="tab" data-tab="calculator">Calculator</button>
+      <button class="tab" data-tab="watchlist">Watchlist</button>
+      <button class="tab" data-tab="journal">Journal</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </div></div></aside>
+
+    <!-- Screener -->
+    <section class="card" id="page-screener">
+      <h3 style="margin-top:0">Options Screener</h3>
+      <div class="row" style="grid-template-columns:1fr auto">
+        <div class="row" style="grid-template-columns:1fr 1fr;gap:10px">
+          <label>Min Monthly %<br><input id="scMinMo" type="number" step="0.01" value="1.25"/></label>
+          <label>Min IV% (proxy)<br><input id="scMinIV" type="number" step="1" value="0"/></label>
+        </div>
+        <div style="display:flex;gap:8px;align-items:end"><button id="scanBtn" class="btn">Scan</button>
+          <select id="scSort" style="width:200px">
+            <option value="moDesc">Sort: Monthly% ↓</option>
+            <option value="moAsc">Monthly% ↑</option>
+            <option value="evDesc">EV/$ ↓</option>
+            <option value="evAsc">EV/$ ↑</option>
+          </select>
+        </div>
+      </div>
+      <div id="scanGrid" class="grid" style="margin-top:10px"></div>
+      <div class="muted" style="margin-top:6px">Tip: In Watchlist, click <b>Fetch</b> on each ticker first so the Screener has Price & IV (or RV20 proxy).</div>
+    </section>
+
+    <!-- Calculator -->
+    <section class="card" id="page-calculator" hidden>
+      <h3 style="margin-top:0">Quick CSP Calculator</h3>
+      <div class="grid" style="grid-template-columns:1.2fr 1fr 1fr;align-items:start">
+        <div>
+          <div class="muted">Inputs</div>
+          <label>Ticker<br><input id="calcTicker" placeholder="e.g., RIOT" value="RIOT"/></label><br>
+          <label>Expiration date<br><input id="calcExpiry" type="date"/></label><br>
+          <div class="row"><label>Strike<br><input id="calcStrike" type="number" step="0.5" value="16"/></label><label>Premium / share<br><input id="calcPrem" type="number" step="0.01" value="0.20"/></label></div>
+          <div class="row"><label>Contracts<br><input id="calcContracts" type="number" step="1" value="1"/></label><label>Manual current price (optional)<br><input id="calcManualPrice" type="number" step="0.01"/></label></div>
+          <div class="row"><label>Fees ($/contract)<br><input id="calcFees" type="number" step="0.01" value="1.30"/></label><label>Slippage (% of premium)<br><input id="calcSlip" type="number" step="0.1" value="0.5"/></label></div>
+          <div class="row"><label>Target monthly % (for solver)<br><input id="calcTargetPct" type="number" step="0.01" value="1.25"/></label><label>Required premium / share (auto)<br><input id="calcReqPrem" type="number" step="0.01" disabled placeholder="auto"/></label></div>
+          <div class="muted" style="margin-top:4px">Net premium uses your slippage & fees. Normalized to <b>21 trading days</b>/month. 1yr = simple annualization.</div>
+        </div>
+        <div>
+          <div class="muted">Outputs</div>
+          <div id="calcSummary" class="kv"></div>
+          <canvas id="calcCanvas" class="mini" height="120" style="margin-top:26px"></canvas>
+          <div class="muted" style="margin-top:6px">Hover the chart to see price at cursor. Bands = 30d/52w lows (if available).</div>
+        </div>
+        <div>
+          <div class="muted">Assignment Risk</div>
+          <div class="row">
+            <label>Mode<br>
+              <select id="riskMode"><option value="pop">PoP-based</option><option value="lows">Lows-based</option></select>
+            </label>
+            <label>Vol source<br>
+              <select id="volSource"><option value="iv" selected>Implied Vol (if available)</option><option value="rv">Realized Vol (fallback)</option></select>
+            </label>
+          </div>
+          <div id="riskBadge" class="badge" style="margin:8px 0 18px">Risk: —</div>
+          <!-- RIGHT-ALIGNED LINKS AS REQUESTED -->
+          <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap">
+            <button id="lkChain" class="btn ghost" type="button">Robinhood</button>
+            <button id="lkAlpha" class="btn ghost" type="button">AlphaSpread</button>
+          </div>
+          <div style="margin-top:8px">
+            <button id="calcRun" class="btn">Calculate</button>
+            <button id="calcSave" class="btn secondary">Save to Journal</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Watchlist -->
+    <section class="card" id="page-watchlist" hidden>
+      <h3 style="margin-top:0">Watchlist</h3>
+      <div class="row" style="grid-template-columns:1fr auto"><input id="wlInput" placeholder="Add ticker (AAPL)"/><button id="wlAdd" class="btn">Add</button></div>
+      <div class="row" style="grid-template-columns:1fr 1fr 1fr; margin-top:8px">
+        <label>Filter: Min IV%<br><input id="wlMinIV" type="number" step="1" value="0"/></label>
+        <label>Sort by<br>
+          <select id="wlSort"><option value="ticker">Ticker A→Z</option><option value="price">Price</option><option value="iv">IV%</option></select>
+        </label>
+        <div style="align-self:end; display:flex; gap:8px; justify-content:flex-end">
+          <button id="wlFetchAll" class="btn secondary">Fetch All</button>
+          <button id="wlClear" class="btn ghost">Clear</button>
+        </div>
+      </div>
+      <div id="wlList" style="display:grid;gap:10px;margin-top:8px"></div>
+    </section>
+
+    <section class="card" id="page-journal" hidden>
+      <h3 style="margin-top:0">Journal</h3>
+      <table class="journal-table" style="width:100%;border-collapse:collapse">
+        <thead><tr><th>Date</th><th>Ticker</th><th>Strike</th><th>DTE</th><th>Prem</th><th>PoP</th><th>EV/$</th><th>Delta</th><th>Gamma</th><th>Status</th><th></th></tr></thead>
+        <tbody id="journalBody"></tbody>
+      </table>
+    </section>
+
+    <section class="card" id="page-settings" hidden>
+      <h3 style="margin-top:0">Settings</h3>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+        <div>
+          <div class="muted">Google Bridge</div>
+          <label>Google Sheet Bridge URL (Apps Script)<br><input id="setGoogleBridge" placeholder="https://script.google.com/.../exec"/></label>
+          <div style="display:flex; gap:8px; margin-top:6px">
+            <button id="setDefaultBridge" class="btn secondary">Default link</button>
+          </div>
+          <div class="muted" style="margin-top:8px">One URL for all tickers. The app calls it with <code>?ticker=SYMBOL</code>. We use it for <b>current price</b> and <b>1y series</b> (RV20 & lows).</div>
+        </div>
+        <div>
+          <div class="muted">Execution defaults</div>
+          <label>Mode<br>
+            <select id="execMode">
+              <option value="custom">Custom</option>
+              <option value="robinhood">Robinhood</option>
+            </select>
+          </label>
+          <div class="row"><label>Fees ($/contract)<br><input id="setFees" type="number" step="0.01" value="1.30"/></label><label>Slippage (% of premium)<br><input id="setSlip" type="number" step="0.1" value="0.5"/></label></div>
+          <div class="muted" style="margin-top:8px">Robinhood mode sets Fees = 0.04 and Slippage = 0%.</div>
+        </div>
+        <div>
+          <div class="muted">Edge / EV</div>
+          <label>Edge vs fair value (%)<br><input id="edgePct" type="number" step="0.1" value="0"/></label>
+          <div class="muted" style="margin-top:8px">EV on cards assumes you can sell at <b>(Black–Scholes fair + Edge%)</b> then subtract fees & slippage. Positive EV means premium > model fair (with your edge).</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">v2.2.7 • Bridge-first (price+RV) • Yahoo IV-only • Scrollbar-stable • Working sort • Help modal</footer>
+
+  <!-- Help / Tutorial Modal -->
+  <div id="helpModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3 id="helpTitle">How to use this app</h3>
+        <button id="helpClose" class="btn ghost">Close</button>
+      </div>
+      <div class="steps">
+        <div class="step"><b>1) Watchlist.</b> Add tickers, then click <b>Fetch</b> to pull <i>Price</i> (Google) & <i>IV</i> (Yahoo). If IV is unavailable, we use <i>RV20</i> from the 1-year series.</div>
+        <div class="step"><b>2) Calculator.</b> Enter strike, premium, expiry. We compute net premium (after slippage & fees), normalized to 21 trading days/month, PoP, breakeven, and 1-yr simple annualization. Links to Robinhood & AlphaSpread are on the right.</div>
+        <div class="step"><b>3) Screener.</b> Set Min Monthly % and Min IV%, click Scan. Sort by Monthly% or EV/$ (asc/desc). Save any card to the Journal.</div>
+        <div class="step"><b>4) Settings.</b> Paste your Google Bridge URL (or use Default). Modes: Robinhood sets Fees=0.04, Slippage=0%. Edge% is how far above model fair you expect to fill; EV uses this.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.DEBUG = true; // set to true to see debug in console
+
+    /* ===== Theme ===== */
+    (function(){ const t = localStorage.getItem('theme'); if (t==='dark') document.body.classList.add('dark'); })();
+    document.getElementById('toggleDark').onclick = ()=>{ document.body.classList.toggle('dark'); localStorage.setItem('theme', document.body.classList.contains('dark')?'dark':'light'); };
+
+    /* ===== State ===== */
+    const state = { tickers: ['AAPL','MSFT','RIOT'], journal: [], settings: { googleBridgeUrl:'', feesPerContract:1.30, slippagePct:0.5, execMode:'custom', edgePct:0 } };
+
+    const els = {
+      tabs: document.querySelectorAll('.tab'),
+      pages: { screener:document.getElementById('page-screener'), calculator:document.getElementById('page-calculator'), watchlist:document.getElementById('page-watchlist'), journal:document.getElementById('page-journal'), settings:document.getElementById('page-settings') },
+      saveBadge: document.getElementById('saveBadge'),
+      // calc
+      calcTicker: document.getElementById('calcTicker'), calcExpiry: document.getElementById('calcExpiry'), calcStrike: document.getElementById('calcStrike'), calcPrem: document.getElementById('calcPrem'), calcContracts: document.getElementById('calcContracts'), calcManualPrice: document.getElementById('calcManualPrice'), calcFees: document.getElementById('calcFees'), calcSlip: document.getElementById('calcSlip'), calcTargetPct: document.getElementById('calcTargetPct'), calcReqPrem: document.getElementById('calcReqPrem'), calcRun: document.getElementById('calcRun'), calcSave: document.getElementById('calcSave'),
+      calcSummary: document.getElementById('calcSummary'), calcCanvas: document.getElementById('calcCanvas'), riskMode: document.getElementById('riskMode'), volSource: document.getElementById('volSource'), riskBadge: document.getElementById('riskBadge'), lkAlpha: document.getElementById('lkAlpha'), lkChain: document.getElementById('lkChain'),
+      // settings
+      setGoogleBridge: document.getElementById('setGoogleBridge'), setDefaultBridge: document.getElementById('setDefaultBridge'), setFees: document.getElementById('setFees'), setSlip: document.getElementById('setSlip'), execMode: document.getElementById('execMode'), edgePct: document.getElementById('edgePct'),
+      // wl
+      wlInput: document.getElementById('wlInput'), wlAdd: document.getElementById('wlAdd'), wlList: document.getElementById('wlList'), wlMinIV: document.getElementById('wlMinIV'), wlSort: document.getElementById('wlSort'), wlFetchAll: document.getElementById('wlFetchAll'), wlClear: document.getElementById('wlClear'),
+      // screener
+      scMinMo: document.getElementById('scMinMo'), scMinIV: document.getElementById('scMinIV'), scSort: document.getElementById('scSort'), scanBtn: document.getElementById('scanBtn'), scanGrid: document.getElementById('scanGrid'),
+      // IO
+      btnImport: document.getElementById('btnImport'), btnExport: document.getElementById('btnExport'), fileInput: document.getElementById('fileInput'),
+      // help
+      helpBtn: document.getElementById('btnHelp'), helpModal: document.getElementById('helpModal'), helpClose: document.getElementById('helpClose')
+    };
+
+    /* ===== Storage ===== */
+    const KEY='csp_v227_state';
+    function save(){ localStorage.setItem(KEY, JSON.stringify(state)); els.saveBadge.textContent='💾 Saved'; }
+    function load(){ const raw=localStorage.getItem(KEY); if(!raw) return; try{ const s=JSON.parse(raw); Object.assign(state,s);}catch{} }
+
+    /* ===== Networking ===== */
+    async function fetchText(url){ try { const r = await fetch(url, {cache:'no-store'}); if (r.ok) return await r.text(); } catch {} try { const u = new URL(url); const prox = `https://r.jina.ai/${u.protocol}//${u.host}${u.pathname}${u.search}`; const r = await fetch(prox, {cache:'no-store'}); if (r.ok) return await r.text(); } catch {} try { const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {cache:'no-store'}); if (r.ok) return await r.text(); } catch {} throw new Error('Fetch failed: ' + url); }
+    async function fetchJSON(url){ return JSON.parse(await fetchText(url)); }
+
+    /* ===== Yahoo IV helper (proxied; IV only) ===== */
+    function proxiedUrls(url){
+      const u = new URL(url);
+      const jina = `https://r.jina.ai/http://${u.host}${u.pathname}${u.search}`;
+      const ao   = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+      const iso  = `https://cors.isomorphic-git.org/${url}`;
+      return [jina, ao, iso];
+    }
+    async function yjson(url){
+      let last;
+      for(const u of proxiedUrls(url)){
+        try{
+          const r = await fetch(u, { cache:'no-store' });
+          if(!r.ok){ last = new Error('HTTP '+r.status); continue; }
+          const ct = r.headers.get('content-type')||'';
+          if (ct.includes('application/json')) return await r.json();
+          const t = await r.text(); try { return JSON.parse(t); } catch {}
+        }catch(e){ last = e; }
+      }
+      if (window.DEBUG) console.warn('[yjson fail]', url, last);
+      throw last || new Error('All proxies failed');
+    }
+    async function fetchYahooIV(sym, tenorDays=30){
+      try{
+        const m = await yjson(`https://query2.finance.yahoo.com/v7/finance/options/${encodeURIComponent(sym)}`);
+        const expiries = m.optionChain?.result?.[0]?.expirationDates || [];
+        if (!expiries.length) return { iv:null, reason:'no expiries' };
+        const now = Math.floor(Date.now()/1000);
+        const target = now + tenorDays*86400;
+        expiries.sort((a,b)=>Math.abs(a-target)-Math.abs(b-target));
+        for (const ts of expiries.slice(0,2)){
+          const j = await yjson(`https://query2.finance.yahoo.com/v7/finance/options/${encodeURIComponent(sym)}?date=${ts}`);
+          const res = j.optionChain?.result?.[0];
+          const puts = res?.options?.[0]?.puts || [];
+          if (!puts.length) continue;
+          const S = res?.quote?.regularMarketPrice ?? res?.quote?.postMarketPrice ?? res?.quote?.preMarketPrice;
+          if (!(S>0)) continue;
+          const lo=S*0.95, hi=S*1.05;
+          const window = puts.filter(p => isFinite(+p.strike) && p.strike>=lo && p.strike<=hi);
+          const ivs = window.map(p=> +p.impliedVolatility).filter(v=> isFinite(v) && v>0);
+          if (ivs.length) {
+            const mid = ivs.sort((a,b)=>a-b)[Math.floor(ivs.length/2)];
+            return { iv: mid, reason:`yahoo median IV (${ivs.length})` };
+          }
+        }
+      }catch(e){ if (window.DEBUG) console.warn('fetchYahooIV fail', e); }
+      return { iv:null, reason:'no iv' };
+    }
+
+    /* ===== Business day math ===== */
+    function businessDaysBetween(d1, d2){ const start = new Date(d1.getFullYear(), d1.getMonth(), d1.getDate()); const end = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate()); let count=0; for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){ const wd=d.getDay(); if(wd!==0 && wd!==6) count++; } return Math.max(1,count); }
+    function addBusinessDays(start, bd){ const d=new Date(start); let added=0; while(added<bd){ d.setDate(d.getDate()+1); const wd=d.getDay(); if(wd!==0 && wd!==6) added++; } return d; }
+    function yearsFromNowBusinessDays(bd){ return Math.max(1,bd)/252; }
+
+    /* ===== Google bridge (price + series + lows) ===== */
+    async function fetchGoogleBridge(ticker){
+      const base=(state.settings.googleBridgeUrl||'').trim();
+      if(!base) throw new Error('Set Google Bridge URL in Settings');
+      const url=`${base}?ticker=${encodeURIComponent(ticker)}`;
+      const r = await fetch(url, { cache:'no-store' });
+      if (!r.ok) throw new Error('Bridge HTTP ' + r.status);
+      const j = await r.json();
+      return {
+        current: (j.current!=null && isFinite(+j.current)) ? +j.current : null,
+        low30d: (j.low30d!=null && isFinite(+j.low30d)) ? +j.low30d : null,
+        low52w: (j.low52w!=null && isFinite(+j.low52w)) ? +j.low52w : null,
+        series: Array.isArray(j.series) ? j.series : null
+      };
+    }
+
+    /* ===== Chart ===== */
+    function drawSeriesChart(canvas, xs, ys, bands){ const dpr=window.devicePixelRatio||1; const w=canvas.clientWidth, h=canvas.clientHeight; if(canvas.width!==w*dpr){ canvas.width=w*dpr; canvas.height=h*dpr; } const ctx=canvas.getContext('2d'); const lineColor=getComputedStyle(document.body).getPropertyValue('--line'); const accColor=getComputedStyle(document.body).getPropertyValue('--accent'); function grid(){ ctx.strokeStyle=lineColor; ctx.lineWidth=1*dpr; for(let i=0;i<=4;i++){ const x=i/4*canvas.width; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); } }
+      const minY=Math.min(...ys, bands.low30d??Infinity, bands.low52w??Infinity); const maxY=Math.max(...ys, bands.low30d??-Infinity, bands.low52w??-Infinity);
+      const px=i=> (i/(ys.length-1||1))*canvas.width; const py=v=> canvas.height - ((v-minY)/Math.max(1e-9,(maxY-minY)))*canvas.height; ctx.clearRect(0,0,canvas.width,canvas.height); grid();
+      if (Number.isFinite(bands.low52w)){ ctx.strokeStyle='rgba(239,68,68,.7)'; ctx.setLineDash([6,6]); ctx.beginPath(); ctx.moveTo(0,py(bands.low52w)); ctx.lineTo(canvas.width,py(bands.low52w)); ctx.stroke(); ctx.setLineDash([]); }
+      if (Number.isFinite(bands.low30d)){ ctx.strokeStyle='rgba(245,158,11,.7)'; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(0,py(bands.low30d)); ctx.lineTo(canvas.width,py(bands.low30d)); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.beginPath(); ctx.strokeStyle=accColor; ctx.lineWidth=2.5*dpr; ys.forEach((v,i)=>{ const X=px(i), Y=py(v); if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y); }); ctx.stroke();
+      function redraw(idx){ ctx.clearRect(0,0,canvas.width,canvas.height); grid(); if (Number.isFinite(bands.low52w)){ ctx.strokeStyle='rgba(239,68,68,.7)'; ctx.setLineDash([6,6]); ctx.beginPath(); ctx.moveTo(0,py(bands.low52w)); ctx.lineTo(canvas.width,py(bands.low52w)); ctx.stroke(); ctx.setLineDash([]); } if (Number.isFinite(bands.low30d)){ ctx.strokeStyle='rgba(245,158,11,.7)'; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(0,py(bands.low30d)); ctx.lineTo(canvas.width,py(bands.low30d)); ctx.stroke(); ctx.setLineDash([]); } ctx.beginPath(); ctx.strokeStyle=accColor; ctx.lineWidth=2.5*dpr; ys.forEach((v,i)=>{ const X=px(i), Y=py(v); if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y); }); ctx.stroke(); if(idx!=null){ const X=px(idx), Y=py(ys[idx]); ctx.setLineDash([6,6]); ctx.strokeStyle='#999'; ctx.beginPath(); ctx.moveTo(X,0); ctx.lineTo(X,canvas.height); ctx.stroke(); ctx.setLineDash([]); const label=`${xs[idx]}  $${ys[idx].toFixed(2)}`; ctx.font=`${12*dpr}px system-ui`; const pad=6*dpr; const tw=ctx.measureText(label).width+pad*2, th=20*dpr; let tx=Math.min(Math.max(0,X-tw/2),canvas.width-tw), ty=6*dpr; ctx.fillStyle='rgba(0,0,0,.75)'; ctx.beginPath(); roundRect(ctx,tx,ty,tw,th,4*dpr); ctx.fill(); ctx.fillStyle='#fff'; ctx.fillText(label, tx+pad, ty+14*dpr); } }
+      redraw(null); const toIndex=(evt)=>{ const rect=canvas.getBoundingClientRect(); const x=(evt.clientX-rect.left)*(window.devicePixelRatio||1); const frac=Math.max(0,Math.min(1,x/canvas.width)); return Math.round(frac*(ys.length-1)); }; canvas.onmousemove=e=>redraw(toIndex(e)); canvas.onmouseleave=()=>redraw(null); canvas.ondblclick=()=>redraw(null); }
+    function roundRect(ctx,x,y,w,h,r){ ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); }
+
+    /* ===== Stats / BS ===== */
+    function normCdf(x){ const a1=0.319381530, a2=-0.356563782, a3=1.781477937, a4=-1.821255978, a5=1.330274429; const L=Math.abs(x); const k=1/(1+0.2316419*L); const phi=Math.exp(-0.5*L*L)/Math.sqrt(2*Math.PI); let cdf=1 - phi*(a1*k + a2*k*k + a3*k*k*k + a4*k*k*k*k + a5*k*k*k*k*k); if(x<0) cdf=1-cdf; return cdf; }
+    function bsPutPrice(S,K,sigma,T){ if(!Number.isFinite(S)||!Number.isFinite(K)||!Number.isFinite(sigma)||!Number.isFinite(T)||T<=0) return 0; const r=0.00; const vs=sigma*Math.sqrt(T); const d1=(Math.log(S/K)+(r+0.5*sigma*sigma)*T)/vs; const d2=d1-vs; const N=x=>normCdf(x); return K*Math.exp(-r*T)*N(-d2) - S*N(-d1); }
+    function bsGreeks(S,K,sigma,T){ const r=0.00; const vs=sigma*Math.sqrt(T); const d1=(Math.log(S/K)+(r+0.5*sigma*sigma)*T)/vs; const d2=d1-vs; const pdf=Math.exp(-0.5*d1*d1)/Math.sqrt(2*Math.PI); return { delta_put: normCdf(-d1), gamma: pdf/(S*vs), vega: S*pdf*Math.sqrt(T), theta_put: - (S*pdf*sigma)/(2*Math.sqrt(T)) + r*K*Math.exp(-r*T)*normCdf(-d2) }; }
+    function popAtBreakeven(S,K,sigma,T,prem){ const Kbe=Math.max(.01,K-prem); const vs=sigma*Math.sqrt(T); const d2be=(Math.log(S/Kbe) + (-0.5*sigma*sigma)*T)/vs; return normCdf(d2be); }
+
+    /* ===== Realized vol from series ===== */
+    function realizedVolFromSeries(series, win=20){ if(!series || series.length<win+1) return null; const closes=series.map(d=>+d[1]); const rets=[]; for(let i=1;i<closes.length;i++){ const r=Math.log(closes[i]/closes[i-1]); if(isFinite(r)) rets.push(r); } if(rets.length<win) return null; const arr=rets.slice(-win); const mu=arr.reduce((a,b)=>a+b,0)/arr.length; const v=arr.reduce((a,b)=>a+(b-mu)*(b-mu),0)/(arr.length-1); const vol=Math.sqrt(v)*Math.sqrt(252); return Math.min(2, Math.max(0.02, vol)); }
+
+    /* ===== Calculator (Bridge-first, Yahoo IV optional) ===== */
+    async function runCalc(){
+      const sym=(els.calcTicker.value||'').trim().toUpperCase(); if(!sym) return alert('Enter ticker');
+      const strike=+els.calcStrike.value||0, premPS=+els.calcPrem.value||0, n=+els.calcContracts.value||1; if(!strike||!n) return alert('Strike/contracts');
+      const expiry = els.calcExpiry.value ? new Date(els.calcExpiry.value) : new Date(Date.now()+30*86400000);
+      const daysLeftBD = businessDaysBetween(new Date(), expiry);
+      const slip=+els.calcSlip.value||0, fees=+els.calcFees.value||0, targetPct=(+els.calcTargetPct.value||1.25)/100;
+
+      // 1) Google Bridge first: current + series + lows
+      let S=null, low30=null, low52=null, sigma=null, series=null;
+      try{
+        const g = await fetchGoogleBridge(sym);
+        S = g.current;
+        low30 = g.low30d;
+        low52 = g.low52w;
+        series = g.series;
+        if (window.DEBUG) console.log('calc:bridge', g);
+      }catch(e){
+        if (window.DEBUG) console.warn('bridge error', e);
+      }
+
+      // 2) Yahoo IV only (if selected)
+      if (els.volSource.value === 'iv') {
+        const ivr = await fetchYahooIV(sym, 30);
+        if (ivr.iv != null && ivr.iv > 0) sigma = ivr.iv;
+        if (window.DEBUG) console.log('calc:yahooIV', ivr);
+      }
+
+      // 3) If no IV, compute RV20 from series
+      if (sigma == null) {
+        const rv = realizedVolFromSeries(series, 20);
+        sigma = (rv != null ? rv : 0.30); // last resort
+        if (window.DEBUG) console.log('calc:rv fallback', rv);
+      }
+
+      // 4) Final price sanity
+      if (!S) return alert('Could not obtain current price from Google Bridge. Check Settings → Google Bridge URL.');
+
+      const premAdjPS = premPS * (1 - slip/100); const premC = premAdjPS*100; const coll = strike*100*n; const be = strike - premAdjPS;
+      const actualPct = (premC - fees) / coll; const monthlyEq = actualPct * (21 / Math.max(1,daysLeftBD)); const simpleAnnual = monthlyEq * 12; const meets5 = monthlyEq >= 0.05;
+      const reqPremContract = (targetPct * coll) * (Math.max(1,daysLeftBD)/21) + fees; const reqPremPS = Math.max(0, reqPremContract/100) / (1 - slip/100); els.calcReqPrem.value = reqPremPS.toFixed(2);
+      const pctTo52 = low52? (S - low52) / S : null; const pctTo30 = low30? (S - low30) / S : null;
+
+      // Risk badge
+      let riskLabel='—', riskClass='badge';
+      if (els.riskMode.value==='lows'){
+        if (low30!=null && be <= low30) { riskLabel='LOW (BE ≤ 30d low)'; riskClass='badge ok'; }
+        else if (low52!=null && be <= low52) { riskLabel='MED (BE ≤ 52w low)'; riskClass='badge warn'; }
+        else { riskLabel='HIGH (above lows)'; riskClass='badge bad'; }
+      } else {
+        const T = Math.max(1,daysLeftBD)/252; const pop = popAtBreakeven(S, strike, sigma, T, premAdjPS);
+        if (pop>=.75){ riskLabel=`LOW (PoP ${(pop*100).toFixed(0)}%)`; riskClass='badge ok'; }
+        else if (pop>=.60){ riskLabel=`MED (PoP ${(pop*100).toFixed(0)}%)`; riskClass='badge warn'; }
+        else { riskLabel=`HIGH (PoP ${(pop*100).toFixed(0)}%)`; riskClass='badge bad'; }
+      }
+      els.riskBadge.className=riskClass; els.riskBadge.textContent = `Risk: ${riskLabel}`;
+
+      const rows=[
+        ['Current Stock Price', `$${S.toFixed(2)}`],
+        ['52 Week Low', low52!=null? `$${low52.toFixed(2)}` : '—'],
+        ['30 Day Low', low30!=null? `$${low30.toFixed(2)}` : '—'],
+        ['Volatility Used', `${(sigma*100).toFixed(2)}%`],
+        ['% Needed to 52w', pctTo52!=null? `${(pctTo52*100).toFixed(2)}%` : '—'],
+        ['% Needed to 30d', pctTo30!=null? `${(pctTo30*100).toFixed(2)}%` : '—'],
+        ['Breakeven Price', `$${be.toFixed(2)}`],
+        ['Capital Needed For Trade', `$${coll.toFixed(0)}`],
+        ['Days Left (business)', `${daysLeftBD}`],
+        ['Actual % (net, term)', `${(actualPct*100).toFixed(2)}%`],
+        ['Monthly Premium Equivalent (net, 21d)', `${(monthlyEq*100).toFixed(2)}% ${meets5?'✅':'❌'} (5%/mo)`],
+        ['1yr (simple)', `${(simpleAnnual*100).toFixed(2)}%`]
+      ];
+      els.calcSummary.innerHTML = rows.map(([k,v])=>`<div><span class="k">${k}</span><span>${v}</span></div>`).join('');
+
+      const symUpper = sym.toUpperCase(); const symLower = sym.toLowerCase();
+      const alphaURL = `https://www.alphaspread.com/security/nyse/${symUpper}/summary`;
+      const chainURL = `https://robinhood.com/options/chains/${symLower}/builder/short_put`;
+      els.lkAlpha.onclick = ()=> window.open(alphaURL, '_blank', 'noopener');
+      els.lkChain.onclick = ()=> window.open(chainURL, '_blank', 'noopener');
+
+      let xs=[], ys=[]; if (series && series.length>5){ xs=series.map(d=>d[0]); ys=series.map(d=>+d[1]); } else { xs=[...'....................']; ys=[...Array(20)].map((_,i)=> S*(1+0.02*(i-10)/10)); }
+      drawSeriesChart(els.calcCanvas, xs, ys, {low30d:low30, low52w:low52});
+
+      // Greeks
+      const T = Math.max(1,daysLeftBD)/252; const gk = bsGreeks(S, strike, sigma, T);
+      runCalc._lastGreeks = { sigma, T, delta: gk.delta_put, gamma: gk.gamma };
+    }
+
+    function updateReqPrem(){ const expiry = els.calcExpiry.value ? new Date(els.calcExpiry.value) : new Date(Date.now()+30*86400000); const daysLeftBD = businessDaysBetween(new Date(), expiry); const strike=+els.calcStrike.value||0, n=+els.calcContracts.value||1, coll=strike*100*n, targetPct=(+els.calcTargetPct.value||1.25)/100, fees=+els.calcFees.value||0, slip=+els.calcSlip.value||0; const reqPremContract=(targetPct*coll)*(Math.max(1,daysLeftBD)/21)+fees; const reqPremPS=Math.max(0, reqPremContract/100)/(1 - slip/100); els.calcReqPrem.value = reqPremPS?reqPremPS.toFixed(2):''; }
+
+    /* ===== Journal ===== */
+    function saveToJournal(){ const sym=(els.calcTicker.value||'').trim().toUpperCase(); const strike=+els.calcStrike.value||0; const premPS=+els.calcPrem.value||0; const n=+els.calcContracts.value||1; const expiry = els.calcExpiry.value || ''; const now=new Date(); const greeks=runCalc._lastGreeks||{}; state.journal.unshift({ at: now.toISOString(), sym, strike, premPS, n, expiry, note:'', delta:greeks.delta||null, gamma:greeks.gamma||null }); renderJournal(); save(); }
+    function renderJournal(){ const body=document.getElementById('journalBody'); body.innerHTML=''; for(const j of state.journal){ const tr=document.createElement('tr'); tr.innerHTML=`<td>${new Date(j.at).toLocaleDateString()}</td><td>${j.sym}</td><td>$${j.strike.toFixed(2)}</td><td>${j.expiry||'-'}</td><td>$${j.premPS.toFixed(2)}</td><td>—</td><td>—</td><td>${j.delta!=null?j.delta.toFixed(2):'—'}</td><td>${j.gamma!=null?j.gamma.toExponential(2):'—'}</td><td>Open</td><td><button class="btn ghost" data-del>Delete</button></td>`; tr.querySelector('[data-del]').onclick=()=>{ state.journal=state.journal.filter(x=>x!==j); renderJournal(); save(); }; body.appendChild(tr);} }
+
+    /* ===== Watchlist with Price & IV (Bridge-first) ===== */
+    const wlCache = new Map();
+    async function fetchWatchMeta(sym){
+      try {
+        const g = await fetchGoogleBridge(sym);
+        let ivUse = null;
+        try {
+          const ivr = await fetchYahooIV(sym, 30);
+          if (ivr.iv != null && ivr.iv > 0) ivUse = ivr.iv;
+          if (window.DEBUG) console.log('watch:yahooIV', sym, ivr);
+        } catch {}
+        if (ivUse == null) {
+          const rv = realizedVolFromSeries(g.series, 20);
+          ivUse = rv != null ? rv : 0.30;
+        }
+        return {
+          current: g.current,
+          iv: ivUse,
+          last: new Date().toISOString(),
+          source: (ivUse && ivUse !== 0.30) ? 'google+iv' : 'google+rv20'
+        };
+      } catch (e) {
+        console.warn('bridge fail', e);
+        return { current: NaN, iv: 0.30, last: new Date().toISOString(), source: 'fallback' };
+      }
+    }
+
+    function renderWatchlist(){ const box=els.wlList; box.innerHTML=''; if(!state.tickers || !state.tickers.length){ const p=document.createElement('p'); p.className='muted'; p.textContent='Add tickers to begin.'; box.appendChild(p); return; }
+      let list=[...state.tickers]; const sort=els.wlSort.value; list.sort((a,b)=>{ const A=wlCache.get(a), B=wlCache.get(b); if(sort==='price'){ return (B?.current||0) - (A?.current||0); } if(sort==='iv'){ return (B?.iv||0) - (A?.iv||0); } return a.localeCompare(b); });
+      const minIV= (+els.wlMinIV.value||0)/100;
+      for(const t of list){ const meta=wlCache.get(t); if (meta && meta.iv < minIV) continue; const row=document.createElement('div'); row.className='card'; row.style.padding='12px 14px'; row.style.display='grid'; row.style.gridTemplateColumns='1fr auto auto'; row.style.alignItems='center'; row.style.gap='10px'; const left=document.createElement('div'); left.style.display='flex'; left.style.gap='10px'; left.style.alignItems='center'; const chip=document.createElement('button'); chip.className='btn ghost'; chip.textContent=t; chip.onclick=()=>{ els.calcTicker.value=t; els.tabs.forEach(b=> b.dataset.tab==='calculator' && b.click()); };
+        const metaSpan=document.createElement('span'); metaSpan.className='muted'; metaSpan.textContent='—'; left.appendChild(chip); left.appendChild(metaSpan);
+        const bFetch=document.createElement('button'); bFetch.className='btn secondary'; bFetch.textContent='Fetch'; bFetch.onclick=async()=>{ bFetch.disabled=true; const m=await fetchWatchMeta(t); wlCache.set(t,m); const priceTxt=Number.isFinite(m.current)?`$${m.current.toFixed(2)}`:'n/a'; const label = (m.source==='google+iv')? 'IV' : 'IV≈RV20'; metaSpan.textContent=`Price ${priceTxt} • ${label} ${(m.iv*100).toFixed(0)}%`; bFetch.disabled=false; renderWatchlist(); }; const bDel=document.createElement('button'); bDel.className='btn ghost'; bDel.textContent='✕'; bDel.onclick=()=>{ state.tickers=state.tickers.filter(x=>x!==t); renderWatchlist(); save(); };
+        row.appendChild(left); row.appendChild(bFetch); row.appendChild(bDel); box.appendChild(row);
+        if(meta){ const priceTxt=Number.isFinite(meta.current)?`$${meta.current.toFixed(2)}`:'n/a'; const label = (meta.source==='google+iv')? 'IV' : 'IV≈RV20'; metaSpan.textContent=`Price ${priceTxt} • ${label} ${(meta.iv*100).toFixed(0)}%`; }
+      }
+    }
+
+    els.wlAdd.onclick = ()=>{ const s=(els.wlInput.value||'').trim().toUpperCase(); if(!s) return; if(!state.tickers.includes(s)) state.tickers.push(s); els.wlInput.value=''; renderWatchlist(); save(); };
+    els.wlFetchAll.onclick = async ()=>{ for(const t of state.tickers){ const m=await fetchWatchMeta(t); wlCache.set(t,m);} renderWatchlist(); };
+    els.wlClear.onclick = ()=>{ wlCache.clear(); renderWatchlist(); };
+    els.wlSort.onchange = ()=> renderWatchlist(); els.wlMinIV.oninput = ()=> renderWatchlist();
+
+    /* ===== Screener ===== */
+    function fairPut(S,K,sigma,T){ return bsPutPrice(S,K,sigma,T); }
+    function modelCSPsFor(sym, meta, opts){ const out=[]; const { targetMonthly=0.0125, fees=state.settings.feesPerContract, slip=state.settings.slippagePct, edgePct=(+state.settings.edgePct||0)/100 } = opts; const S=meta.current, sigma=meta.iv; if(!Number.isFinite(S)||!Number.isFinite(sigma)) return out; const expiriesBD=[14,30,45]; const otmPercents=[0.95,0.93,0.90,0.85]; for(const bd of expiriesBD){ const T=yearsFromNowBusinessDays(bd); const expDate=addBusinessDays(new Date(), bd); for(const f of otmPercents){ const K=Math.max(0.5, Math.round((S*f)/0.5)*0.5); const fair= fairPut(S,K,sigma,T); const assumed = fair * (1 + edgePct); const premAdjPS = assumed * (1 - slip/100); const premContract = premAdjPS*100; const collateral=K*100; const actualPct = (premContract - fees)/collateral; const monthlyEq = actualPct*(21/Math.max(1,bd)); const evContract = (premContract - fees) - (fair*100); const evPerDollar= evContract/collateral; if(monthlyEq >= targetMonthly){ out.push({ sym,S,K,bd,expDate, fair, premAdjPS, fees, collateral, monthlyEq, actualPct, breakeven:K - premAdjPS, evContract, evPerDollar }); } } } return out; }
+
+    function renderScan(results){ window._lastScan = results.slice(); const grid=els.scanGrid; grid.innerHTML=''; const sort=els.scSort.value; if(sort==='moAsc') results.sort((a,b)=> a.monthlyEq-b.monthlyEq); else if(sort==='moDesc') results.sort((a,b)=> b.monthlyEq-a.monthlyEq); else if(sort==='evAsc') results.sort((a,b)=> a.evPerDollar-b.evPerDollar); else if(sort==='evDesc') results.sort((a,b)=> b.evPerDollar-a.evPerDollar); if(!results.length){ const p=document.createElement('p'); p.className='muted'; p.textContent='No candidates met your target. Try loosening target, increasing edge, or fetch prices first.'; grid.appendChild(p); return; } for(const r of results){ const div=document.createElement('div'); div.className='card'; const mPct=(r.monthlyEq*100).toFixed(2)+'%'; const aPct=(r.actualPct*100).toFixed(2)+'%'; const evc=(r.evContract).toFixed(2); const evd=(r.evPerDollar*100).toFixed(2)+' bp'; div.innerHTML=`
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>${r.sym}</strong>
+          <span class="badge">${mPct} / mo</span>
+        </div>
+        <div class="kv" style="margin-top:8px">
+          <div><span class="k">Strike</span><span>$${r.K.toFixed(2)}</span></div>
+          <div><span class="k">DTE (biz)</span><span>${r.bd}</span></div>
+          <div><span class="k">Premium (net est)</span><span>$${r.premAdjPS.toFixed(2)}</span></div>
+          <div><span class="k">Breakeven</span><span>$${r.breakeven.toFixed(2)}</span></div>
+          <div><span class="k">Actual % (term)</span><span>${aPct}</span></div>
+          <div><span class="k">Collateral</span><span>$${r.collateral.toFixed(0)}</span></div>
+          <div><span class="k">EV / contract</span><span>$${evc}</span></div>
+          <div><span class="k">EV / $ collat</span><span>${evd}</span></div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn ghost" type="button" onclick="window.open('https://robinhood.com/options/chains/${r.sym.toLowerCase()}/builder/short_put','_blank','noopener')">Robinhood</button>
+          <button class="btn ghost" type="button" onclick="window.open('https://www.alphaspread.com/security/nyse/${r.sym}/summary','_blank','noopener')">AlphaSpread</button>
+          <button class="btn" data-save>Save</button>
+        </div>`; div.querySelector('[data-save]').onclick=()=>{ state.journal.unshift({ at:new Date().toISOString(), sym:r.sym, strike:r.K, premPS:r.premAdjPS, n:1, expiry:r.expDate.toISOString().slice(0,10), note:'Screened pick' }); renderJournal(); save(); }; grid.appendChild(div); } }
+
+    els.scanBtn.onclick = ()=>{ const minMo=(+els.scMinMo.value||1.25)/100; const minIV=(+els.scMinIV.value||0)/100; const results=[]; for(const sym of state.tickers){ const meta=wlCache.get(sym); if(!meta) continue; if(meta.iv < minIV) continue; results.push(...modelCSPsFor(sym, meta, { targetMonthly:minMo, fees:state.settings.feesPerContract, slip:state.settings.slippagePct })); } renderScan(results); };
+    els.scSort.onchange = ()=>{ if (window._lastScan) renderScan(window._lastScan); };
+
+    /* ===== IO ===== */
+    els.btnExport.onclick=()=>{ const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='csp_v227_state.json'; a.click(); URL.revokeObjectURL(a.href); };
+    els.btnImport.onclick=()=> els.fileInput.click();
+    els.fileInput.onchange=async(e)=>{ const f=e.target.files[0]; if(!f) return; const text=await f.text(); try{ const data=JSON.parse(text); Object.assign(state, data); syncSettings(); renderJournal(); renderWatchlist(); save(); }catch{ alert('Invalid JSON'); } e.target.value=''; };
+
+    /* ===== Settings sync ===== */
+    function syncSettings(){ els.setGoogleBridge.value = state.settings.googleBridgeUrl||''; els.setFees.value=state.settings.feesPerContract; els.setSlip.value=state.settings.slippagePct; els.execMode.value=state.settings.execMode||'custom'; els.edgePct.value=state.settings.edgePct||0; els.calcFees.value=els.setFees.value; els.calcSlip.value=els.setSlip.value; }
+    els.setGoogleBridge.oninput=()=>{ state.settings.googleBridgeUrl=els.setGoogleBridge.value.trim(); save(); };
+    els.setDefaultBridge.onclick=()=>{ els.setGoogleBridge.value='https://script.google.com/macros/s/AKfycbzbHte91FRBflp5xJV0vc7jAhQv0xF-tg3fwzKIUXoTu2O1mdGJL5VrfGA__kTB700Bbw/exec'; state.settings.googleBridgeUrl=els.setGoogleBridge.value; save(); };
+    els.setFees.oninput=()=>{ state.settings.feesPerContract=+els.setFees.value||0; els.calcFees.value=els.setFees.value; save(); updateReqPrem(); };
+    els.setSlip.oninput=()=>{ state.settings.slippagePct=+els.setSlip.value||0; els.calcSlip.value=els.setSlip.value; save(); updateReqPrem(); };
+    els.execMode.onchange=()=>{ const m=els.execMode.value; state.settings.execMode=m; if(m==='robinhood'){ state.settings.feesPerContract=0.04; state.settings.slippagePct=0; } syncSettings(); save(); };
+    els.edgePct.oninput=()=>{ state.settings.edgePct=+els.edgePct.value||0; save(); };
+
+    // Calc inputs live
+    [els.calcStrike, els.calcContracts, els.calcFees, els.calcSlip, els.calcTargetPct, els.calcExpiry].forEach(el=> el.addEventListener('input', updateReqPrem));
+    els.calcRun.onclick=runCalc; els.calcSave.onclick=saveToJournal;
+    // Keep external links in Calculator always usable (based on current ticker)
+    function updateCalcLinks(){ const sym=(els.calcTicker.value||'').trim().toUpperCase(); if(!sym) return; const alpha=`https://www.alphaspread.com/security/nyse/${sym}/summary`; const chain=`https://robinhood.com/options/chains/${sym.toLowerCase()}/builder/short_put`; els.lkAlpha.onclick=()=> window.open(alpha,'_blank','noopener'); els.lkChain.onclick=()=> window.open(chain,'_blank','noopener'); }
+    els.calcTicker.addEventListener('input', updateCalcLinks); updateCalcLinks();
+
+    // Tabs
+    els.tabs.forEach(btn=> btn.onclick=()=>{ const tab=btn.dataset.tab; els.tabs.forEach(b=>b.classList.toggle('active', b===btn)); Object.entries(els.pages).forEach(([k,v])=> v.hidden=(k!==tab)); if(tab==='watchlist') renderWatchlist(); });
+
+    // Help modal
+    els.helpBtn.onclick = ()=> els.helpModal.classList.add('on');
+    els.helpClose.onclick = ()=> els.helpModal.classList.remove('on');
+    els.helpModal.addEventListener('click', (e)=>{ if(e.target===els.helpModal) els.helpModal.classList.remove('on'); });
+
+    // Boot
+    load(); syncSettings(); renderJournal(); renderWatchlist(); updateReqPrem(); save();
+  </script>
+</body>
+</html>
